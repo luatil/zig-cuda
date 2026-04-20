@@ -28,6 +28,23 @@ pub fn main(init: std.process.Init) !void {
             return error.WrongResult;
         }
     }
-
     std.debug.print("CUDA add kernel ran successfully! n={d}, c[0..4] = {d:.0} {d:.0} {d:.0} {d:.0}\n", .{ n, c[0], c[1], c[2], c[3] });
+
+    // a[i] = n + i, b[i] = i  =>  a[i] - b[i] = n for every i
+    for (0..n) |i| {
+        a[i] = @floatFromInt(n + i);
+        b[i] = @floatFromInt(i);
+    }
+
+    try ctx.sub(a, b, c);
+
+    // Verify all results
+    for (c) |v| {
+        if (v != @as(f32, n)) {
+            std.debug.print("Result mismatch: got {d}\n", .{v});
+            return error.WrongResult;
+        }
+    }
+
+    std.debug.print("CUDA sub kernel ran successfully! n={d}, c[0..4] = {d:.0} {d:.0} {d:.0} {d:.0}\n", .{ n, c[0], c[1], c[2], c[3] });
 }
