@@ -1,18 +1,13 @@
-//! By convention, root.zig is the root source file when making a package.
 const std = @import("std");
-const Io = std.Io;
 
-/// This is a documentation comment to explain the `printAnotherMessage` function below.
-///
-/// Accepting an `Io.Writer` instance is a handy way to write reusable code.
-pub fn printAnotherMessage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.print("Run `zig build test` to run the tests.\n", .{});
-}
+extern fn cuda_add(h_a: [*]const f32, h_b: [*]const f32, h_c: [*]f32, n: c_int) c_int;
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
-
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+/// Adds two slices element-wise on the GPU. All slices must have the same length.
+pub fn add(a: []const f32, b: []const f32, c: []f32) !void {
+    std.debug.assert(a.len == b.len and b.len == c.len);
+    const err = cuda_add(a.ptr, b.ptr, c.ptr, @intCast(a.len));
+    if (err != 0) {
+        std.debug.print("CUDA error code: {d}\n", .{err});
+        return error.CudaError;
+    }
 }
