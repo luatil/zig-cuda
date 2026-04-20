@@ -1,33 +1,33 @@
 const std = @import("std");
 const cuda = @import("zig_cuda");
 
-pub fn main() !void {
-    const n = 1024;
-    var a: [n]f32 = undefined;
-    var b: [n]f32 = undefined;
-    var c: [n]f32 = undefined;
+pub fn main(init: std.process.Init) !void {
+    const n = 1024 * 1024;
+    // Three 4 MB arrays would overflow the default 8 MB stack; use the heap.
+    var arena = init.arena.allocator();
 
-    // a[i] = i, b[i] = n - i, so c[i] should equal n for all i
+    const a = try arena.alloc(f32, n);
+    const b = try arena.alloc(f32, n);
+    const c = try arena.alloc(f32, n);
+
+    // a[i] = i, b[i] = n - i  =>  c[i] should equal n for every i
     for (0..n) |i| {
         a[i] = @floatFromInt(i);
         b[i] = @floatFromInt(n - i);
     }
 
-    try cuda.add(&a, &b, &c);
+    const ctx = try cuda.Context.init();
+    defer ctx.deinit();
 
-    // Verify results
-    var ok = true;
+    try ctx.add(a, b, c);
+
+    // Verify all results
     for (c) |v| {
         if (v != @as(f32, n)) {
-            ok = false;
-            break;
+            std.debug.print("Result mismatch: got {d}\n", .{v});
+            return error.WrongResult;
         }
     }
 
-    if (ok) {
-        std.debug.print("CUDA add kernel ran successfully! c[0..4] = {d:.0} {d:.0} {d:.0} {d:.0}\n", .{ c[0], c[1], c[2], c[3] });
-    } else {
-        std.debug.print("Result mismatch!\n", .{});
-        return error.WrongResult;
-    }
+    std.debug.print("CUDA add kernel ran successfully! n={d}, c[0..4] = {d:.0} {d:.0} {d:.0} {d:.0}\n", .{ n, c[0], c[1], c[2], c[3] });
 }
