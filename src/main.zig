@@ -47,4 +47,25 @@ pub fn main(init: std.process.Init) !void {
     }
 
     std.debug.print("CUDA sub kernel ran successfully! n={d}, c[0..4] = {d:.0} {d:.0} {d:.0} {d:.0}\n", .{ n, c[0], c[1], c[2], c[3] });
+
+    // a[i] = n + i, b[i] = i  =>  a[i] - b[i] = n for every i
+    for (0..n) |i| {
+        const nf: f32 = @floatFromInt(n);
+        const iplus1: f32 = @floatFromInt(i + 1);
+        a[i] = nf / iplus1;
+        b[i] = iplus1;
+    }
+
+    try ctx.mul(a, b, c);
+
+    // Verify all results
+    for (0..n) |i| {
+        const diff = @as(f32, n) - c[i];
+        if (@abs(diff) > 0.1) {
+            std.debug.print("{d} * {d} = {d} expected {d} diff is {}\n", .{ a[i], b[i], c[i], n, diff });
+            return error.WrongResult;
+        }
+    }
+
+    std.debug.print("CUDA mul kernel ran successfully! n={d}, c[0..4] = {d:.0} {d:.0} {d:.0} {d:.0}\n", .{ n, c[0], c[1], c[2], c[3] });
 }

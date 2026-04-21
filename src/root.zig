@@ -70,6 +70,7 @@ pub const Context = struct {
     module: CUmodule,
     add_fn: CUfunction,
     sub_fn: CUfunction,
+    mul_fn: CUfunction,
 
     pub fn init() !Context {
         try cuInit(0).check();
@@ -92,7 +93,10 @@ pub const Context = struct {
         var sub_fn: CUfunction = undefined;
         try cuModuleGetFunction(&sub_fn, module, "sub_kernel").check();
 
-        return .{ .ctx = ctx, .module = module, .add_fn = add_fn, .sub_fn = sub_fn };
+        var mul_fn: CUfunction = undefined;
+        try cuModuleGetFunction(&mul_fn, module, "MultiplicationKernel").check();
+
+        return .{ .ctx = ctx, .module = module, .add_fn = add_fn, .sub_fn = sub_fn, .mul_fn = mul_fn };
     }
 
     pub fn deinit(self: Context) void {
@@ -133,6 +137,54 @@ pub const Context = struct {
         };
         try cuLaunchKernel(
             self.add_fn,
+            grid_size,
+            1,
+            1,
+            block_size,
+            1,
+            1,
+            0,
+            null,
+            &params,
+            null,
+        ).check();
+
+        // Download result (implicit sync — no stream means default stream)
+        try cuMemcpyDtoH_v2(@ptrCast(c.ptr), d_c, size).check();
+    }
+
+    pub fn mul(self: Context, a: []const f32, b: []const f32, c: []f32) !void {
+        std.debug.assert(a.len == b.len and b.len == c.len);
+        const n = a.len;
+        const size = n * @sizeOf(f32);
+
+        // Allocate device buffers
+        var d_a: CUdeviceptr = undefined;
+        var d_b: CUdeviceptr = undefined;
+        var d_c: CUdeviceptr = undefined;
+        try cuMemAlloc_v2(&d_a, size).check();
+        defer _ = cuMemFree_v2(d_a);
+        try cuMemAlloc_v2(&d_b, size).check();
+        defer _ = cuMemFree_v2(d_b);
+        try cuMemAlloc_v2(&d_c, size).check();
+        defer _ = cuMemFree_v2(d_c);
+
+        // Upload inputs
+        try cuMemcpyHtoD_v2(d_a, @ptrCast(a.ptr), size).check();
+        try cuMemcpyHtoD_v2(d_b, @ptrCast(b.ptr), size).check();
+
+        // Launch kernel: pass pointers-to-args as required by the Driver API
+        const block_size: c_uint = 256;
+        const grid_size: c_uint = @intCast((n + block_size - 1) / block_size);
+        var n_arg: c_int = @intCast(n);
+        var params = [_]?*anyopaque{
+            @ptrCast(&d_a),
+            @ptrCast(&d_b),
+            @ptrCast(&d_c),
+            @ptrCast(&n_arg),
+        };
+        try cuLaunchKernel(
+            self.mul_fn,
             grid_size,
             1,
             1,
